@@ -7,6 +7,9 @@ import           Control.Concurrent       (Chan, MVar, newChan, newEmptyMVar,
                                            putMVar, readChan, readMVar,
                                            writeChan)
 import           Control.Concurrent.Async
+import           Control.Exception        (throw)
+import           Control.Exception        (try)
+import           Control.Exception        (SomeException)
 import           Control.Monad            (forever)
 import           Data.ByteString.Char8    (ByteString)
 import qualified Data.ByteString.Char8    as BS
@@ -25,6 +28,7 @@ veneer u = case setupHTTP u of
                  writeChan workQueue (input, mv)
                  readMVar mv)
 
+
 go :: Chan (t, MVar a) -> IO (t -> IO (), IO a) -> IO b
 go incoming setup = do
   retChan <- newChan
@@ -34,9 +38,14 @@ go incoming setup = do
     () <- send input
     writeChan retChan mv
   forever $ do
-    res <- recv
-    mv <- readChan retChan
-    putMVar mv res
+    res <- try recv
+    case res of
+      Left (e::SomeException) -> do
+        print ("ERROR IN VENEER!", e)
+        return (throw e)
+      Right bs -> do
+        mv <- readChan retChan
+        putMVar mv bs
 
 
 setupHTTP :: URI -> Either String (IO (ByteString -> IO (), IO ByteString))
